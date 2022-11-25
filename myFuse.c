@@ -90,3 +90,90 @@ static int do_getattr(const char *path, struct stat *st)
     return 0;
 
 }
+
+//em readdir podemos fazer a lista de arquivos/diretorios que estao disponiveis dentro de um diretorio.
+//no SSFS só existe um diretorio (O root directory)
+
+//Os parametros: path é o caminho do diretório que o sistema pediu a lista de arquivos que reside dentro dele
+//buffer é onde preenchemos com nomes dos arquivos/directories que estão dentro do diretório em questão
+//filler é uma função enviada pelo fuse e que podemos usar para preencher o buffer com arquivos disponiveis no path
+
+/*filler dentro do fuse é declarado da seguinte:
+typedef int (*fuse_fill_dir_t) (void *buf, const char *name,
+				const struct stat *stbuf, off_t off);
+                
+* The first parameter is a pointer to the buffer which we want to write the entry (filename or directory name) on. 
+The second parameter is the name of the current entry. 
+The third and the fourth parameters will not be covered here.*/
+static int do_readdir(const char* path, void* buffer, fuse_fill_dir_t filler,
+off_t offset, struct fuse_file_info* fi)
+{
+    /*We filled the list of available entries in “path” with two entries: “.” which represents the current directory, 
+    while “..” represents the parent directory. 
+    It’s a known convention in Unix world.*/
+    filler(buffer, ".", NULL, 0); //Diretorio atual
+    filler(buffer, "..", NULL, 0); //Diretorio pai
+
+    //Se o usuario quiser mostrar os arquivos/diretorios do root directory
+    if ( strcmp( path, "/" ) == 0 )
+	{
+		filler( buffer, "file54", NULL, 0 );
+		filler( buffer, "file349", NULL, 0 );
+	}
+	
+	return 0;
+}
+
+//read consegue ler o conteúdo de algum arquivo específico
+//Neste buffer vamos guardar o pedaço que o sistema está interessado
+//size é o tamanho do pedaço 
+//offset é o lugar no conteúdo do qual vamos começar a ler
+//esta função precisa retornar o número de bytes que foram lidos com sucesso
+//basicamente lemos letra por letra. Se size = 35 e offset = 0, então ele vai ler 
+//da primeira letra do arquivo até a letra 35
+/*Outro exemplo, vamos supor que size = 35 mas o offset = 40, 
+então vamos pular os primeiros 41 caracteres, 
+pois offset = 40, e começar a ler do caracter 42 ao 77, pois o size = 35*/
+static int do_read(const char* path, char* buffer, size_t size, 
+off_t offset, struct fuse_file_info* fi)
+{
+    char file54Text[] = "Hello World From File54!";
+	char file349Text[] = "Hello World From File349!";
+	char *selectedText = NULL;
+
+    //Se for o file54, passamos o ponteiro dele para o selectedText
+    if ( strcmp( path, "/file54" ) == 0 )
+    {
+        selectedText = file54Text;
+    }
+	else if ( strcmp( path, "/file349" ) == 0 )
+    {
+        selectedText = file349Text;
+    }	
+    //Se tentar ler qualquer outro arquivo, retorna erro
+	else
+    {
+        return -1;
+    }
+	
+    //Copiamos para o buffer o conteúdo do arquivo em questão
+    //começando pelo offset até chegar no size
+    //depois retornamos o número de bytes lido
+    memcpy( buffer, selectedText + offset, size );
+		
+	return strlen( selectedText ) - offset;
+}
+
+//Agora preenchemos o fuse_operations e chamamos a função main do fuse
+//que rodará o nosso sistema de arquivos
+
+static struct fuse_operations operations = {
+    .getattr	= do_getattr,
+    .readdir	= do_readdir,
+    .read	= do_read,
+};
+
+int main( int argc, char *argv[] )
+{
+	return fuse_main( argc, argv, &operations, NULL );
+}
